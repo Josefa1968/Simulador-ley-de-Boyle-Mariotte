@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Ley de Boyle-Mariotte</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            background: #ffffff;
+            touch-action: none;
+        }
+        .slider-input {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .slider-input::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-slate-800 mb-4">Ley de Boyle-Mariotte</h1>
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 text-left inline-block w-full">
+                <p class="text-slate-700 italic">
+                    "Dentro de esta jeringa hay aire. No parece gran cosa, pero cada partícula se está moviendo constantemente. 
+                    Cuando empujamos el émbolo, no desaparece el aire. Lo que hacemos es darle menos espacio. Las partículas ahora chocan más veces, en menos tiempo, en un espacio más pequeño."
+                </p>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+            <!-- Panel de Control -->
+            <div class="bg-white p-6 rounded-xl shadow-md space-y-6">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Posición del Émbolo (Volumen)</label>
+                    <input type="range" id="volumeSlider" min="50" max="350" value="350" class="slider-input">
+                    <div class="flex justify-between text-xs text-slate-500 mt-2 font-mono">
+                        <span>Poco espacio (Presión Alta)</span>
+                        <span>Mucho espacio (Presión Baja)</span>
+                    </div>
+                </div>
+
+                <div class="space-y-4 pt-4 border-t border-slate-100">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                        <span class="text-sm text-slate-600">Partículas constantes: <span id="particleCountText" class="font-bold"></span></span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                        <span class="text-sm text-slate-600">Presión relativa: <span id="pressureText" class="font-bold"></span></span>
+                    </div>
+                </div>
+                
+                <button id="resetBtn" class="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-700 transition">
+                    Reiniciar Simulación
+                </button>
+            </div>
+
+            <!-- Contenedor del Canvas -->
+            <div class="md:col-span-2 relative">
+                <canvas id="simCanvas"></canvas>
+                <div class="mt-4 text-center text-sm text-slate-500">
+                    Mueve el control deslizante para comprimir el aire
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const pressureText = document.getElementById('pressureText');
+        const particleCountText = document.getElementById('particleCountText');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Configuración de la jeringa
+        const syringeX = 50;
+        const syringeY = 50;
+        const syringeWidth = 400;
+        const syringeHeight = 150;
+        const PARTICLE_COUNT = 40;
+        const PARTICLE_RADIUS = 5;
+
+        let particles = [];
+        let plungerPos = parseInt(volumeSlider.value); // X relativa al inicio de la jeringa
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = syringeX + Math.random() * (plungerPos - 10);
+                this.y = syringeY + Math.random() * (syringeHeight - 10);
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.color = '#ef4444'; // Rojo para las esferas
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Colisión con paredes izquierda
+                if (this.x - PARTICLE_RADIUS < syringeX) {
+                    this.x = syringeX + PARTICLE_RADIUS;
+                    this.vx *= -1;
+                }
+                
+                // Colisión con el émbolo (pared derecha móvil)
+                const currentPlungerX = syringeX + plungerPos;
+                if (this.x + PARTICLE_RADIUS > currentPlungerX) {
+                    this.x = currentPlungerX - PARTICLE_RADIUS;
+                    this.vx *= -1;
+                }
+
+                // Colisión con paredes superior e inferior
+                if (this.y - PARTICLE_RADIUS < syringeY) {
+                    this.y = syringeY + PARTICLE_RADIUS;
+                    this.vy *= -1;
+                }
+                if (this.y + PARTICLE_RADIUS > syringeY + syringeHeight) {
+                    this.y = syringeY + syringeHeight - PARTICLE_RADIUS;
+                    this.vy *= -1;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, PARTICLE_RADIUS, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+
+        function init() {
+            // Ajustar tamaño del canvas
+            canvas.width = 500;
+            canvas.height = 300;
+            
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+            particleCountText.innerText = PARTICLE_COUNT;
+        }
+
+        function drawSyringe() {
+            // Cuerpo de la jeringa (exterior)
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 4;
+            ctx.lineJoin = 'round';
+            
+            // Líneas principales
+            ctx.beginPath();
+            ctx.moveTo(syringeX + syringeWidth, syringeY); // Arriba derecha
+            ctx.lineTo(syringeX, syringeY);               // Arriba izquierda
+            ctx.lineTo(syringeX, syringeY + syringeHeight); // Abajo izquierda
+            ctx.lineTo(syringeX + syringeWidth, syringeY + syringeHeight); // Abajo derecha
+            ctx.stroke();
+
+            // Punta de la jeringa (salida cerrada)
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(syringeX - 15, syringeY + (syringeHeight/2) - 10, 15, 20);
+
+            // El émbolo (Plunger)
+            const pX = syringeX + plungerPos;
+            
+            // Goma del émbolo
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(pX, syringeY, 15, syringeHeight);
+            
+            // Vara del émbolo
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillRect(pX + 15, syringeY + (syringeHeight/2) - 8, syringeWidth - plungerPos + 20, 16);
+            
+            // Mango del émbolo
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(syringeX + syringeWidth + 30, syringeY + (syringeHeight/2) - 30, 10, 60);
+
+            // Marcas de graduación
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 1;
+            for(let i = 50; i < syringeWidth; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(syringeX + i, syringeY);
+                ctx.lineTo(syringeX + i, syringeY + 15);
+                ctx.stroke();
+            }
+        }
+
+        function update() {
+            plungerPos = parseInt(volumeSlider.value);
+            
+            // Calcular presión (P = k/V)
+            // Usamos la posición del émbolo como proxy del volumen
+            const pressure = (350 / plungerPos).toFixed(2);
+            pressureText.innerText = pressure + " atm";
+
+            // Asegurar que las partículas no se queden fuera si movemos el émbolo rápido
+            particles.forEach(p => {
+                const currentPlungerX = syringeX + plungerPos;
+                if (p.x > currentPlungerX - PARTICLE_RADIUS) {
+                    p.x = currentPlungerX - PARTICLE_RADIUS;
+                }
+                p.update();
+            });
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawSyringe();
+            particles.forEach(p => p.draw());
+            
+            update();
+            requestAnimationFrame(render);
+        }
+
+        volumeSlider.addEventListener('input', () => {
+            // Opcional: aumentar velocidad de partículas al comprimir para efecto visual
+            const speedFactor = 350 / parseInt(volumeSlider.value);
+            particles.forEach(p => {
+                // Normalizamos y aplicamos factor
+                const mag = Math.sqrt(p.vx**2 + p.vy**2);
+                p.vx = (p.vx / mag) * (2 * speedFactor);
+                p.vy = (p.vy / mag) * (2 * speedFactor);
+            });
+        });
+
+        resetBtn.addEventListener('click', () => {
+            volumeSlider.value = 350;
+            init();
+        });
+
+        window.onload = () => {
+            init();
+            render();
+        };
+    </script>
+</body>
+</html>
